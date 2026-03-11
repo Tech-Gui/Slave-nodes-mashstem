@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../lte_ble_gateway"
+		}
+	],
+	"settings": {}
+}
