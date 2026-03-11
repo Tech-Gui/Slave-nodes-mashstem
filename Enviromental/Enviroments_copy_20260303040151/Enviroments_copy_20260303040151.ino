@@ -68,7 +68,7 @@ bool readEnvironmentalData() {
     
     // Check if readings are valid
     if (isnan(temp) || isnan(humidity)) {
-        Serial.println("❌ Failed to read from DHT sensor!");
+        Serial.println("Error: Failed to read from DHT sensor");
         sensorData.valid = false;
         return false;
     }
@@ -79,7 +79,7 @@ bool readEnvironmentalData() {
     sensorData.valid = true;
     sensorData.lastUpdate = millis();
     
-    Serial.printf("📊 Environmental readings: T=%.1f°C, H=%.1f%%\n", temp, humidity);
+    Serial.printf("Environmental readings: T=%.1f C, H=%.1f%%\n", temp, humidity);
     
     return true;
 }
@@ -101,8 +101,8 @@ String formatSensorData() {
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("=== ESP32 Environmental Sensor Node Starting ===");
-    Serial.printf("Sensor: DHT%d (Temperature + Humidity)\n", DHT_TYPE == DHT11 ? 11 : 22);
+    Serial.println("ESP32 Environmental Node Starting");
+    Serial.printf("Sensor: DHT%d\n", DHT_TYPE == DHT11 ? 11 : 22);
 
     // Setup hardware pins
     // pinMode(DHT_PIN, INPUT_PULLUP); // REMOVED: Managed by DHT library internally.
@@ -122,9 +122,8 @@ void setup() {
     Serial.print("Device Name: ");
     Serial.println(deviceName);
 
-    // Test sensor before BLE initialization
-    Serial.println("========================================");
-    Serial.println("Testing environmental sensor...");
+    // Test sensor
+    Serial.println("Testing sensor...");
     
     // Try to read a few times to ensure sensor is ready
     bool sensorReady = false;
@@ -138,27 +137,10 @@ void setup() {
     }
 
     if (sensorReady) {
-        Serial.printf("✅ Sensor test successful: %.1f°C, %.1f%%\n", 
+        Serial.printf("Sensor test success: %.1f C, %.1f%%\n", 
                      sensorData.temperature, sensorData.humidity);
-                     
-        // Classify readings
-        if (sensorData.temperature < 10) {
-            Serial.println("🥶 Temperature: Cold");
-        } else if (sensorData.temperature < 25) {
-            Serial.println("🌡️  Temperature: Comfortable");
-        } else {
-            Serial.println("🔥 Temperature: Warm");
-        }
-        
-        if (sensorData.humidity < 30) {
-            Serial.println("🏜️  Humidity: Dry");
-        } else if (sensorData.humidity < 60) {
-            Serial.println("💧 Humidity: Comfortable");
-        } else {
-            Serial.println("💦 Humidity: Humid");
-        }
     } else {
-        Serial.println("❌ Sensor test failed - check DHT wiring!");
+        Serial.println("Error: Sensor test failed - check DHT wiring");
         Serial.println("Connections should be:");
         Serial.printf("   DHT VCC -> 3.3V\n");
         Serial.printf("   DHT GND -> GND\n");
@@ -166,7 +148,6 @@ void setup() {
     }
 
     // Initialize BLE
-    Serial.println("========================================");
     Serial.println("Initializing BLE...");
     BLEDevice::init(deviceName.c_str());
 
@@ -193,13 +174,7 @@ void setup() {
     // Start advertising (Wait! We now start this only when data is ready in loop)
     // BLEDevice::startAdvertising();
 
-    Serial.println("========================================");
-    Serial.println("🌡️💧 BLE Environmental Sensor Ready (Radio Idle)");
-    Serial.println("Waiting for nRF9160 to connect...");
-    
-    // --- CHANGE 3: Corrected the log message to reflect the new data format ---
-    Serial.println("Data format: T:xx.x,H:yy.y");
-    Serial.println("========================================");
+    Serial.println("Ready. Data format: T:xx.x,H:yy.y");
 }
 
 void loop() {
@@ -210,7 +185,7 @@ void loop() {
     if (currentTime - lastReadingTime >= READING_INTERVAL || lastReadingTime == 0) {
         lastReadingTime = currentTime;
         
-        Serial.println("\n--- Periodic Sensor Cycle Start ---");
+        Serial.println("Cycle start");
         // Read environmental data with retry
         bool success = false;
         for (int i = 0; i < 3; i++) {
@@ -222,10 +197,10 @@ void loop() {
         }
         
         if (success) {
-            Serial.println("Sensor read successful. Starting radio (advertising)...");
+            Serial.println("Reading success. Radio ON.");
             BLEDevice::startAdvertising(); // Radio ON
         } else {
-            Serial.println("Failed to read sensor this cycle. Radio remains OFF.");
+            Serial.println("Reading failed. Radio OFF.");
         }
     }
 
@@ -237,7 +212,7 @@ void loop() {
         if (sensorData.valid && (millis() - connectedSince >= 2000)) {
             String dataString = formatSensorData();
             
-            Serial.print("Environmental data: ");
+            Serial.print("Sending: ");
             Serial.println(dataString);
 
             // Set characteristic value
@@ -246,7 +221,7 @@ void loop() {
             // Reverted to compatible notify() call to fix compilation error
             pTempHumidityCharacteristic->notify();
 
-            Serial.println("Sent notification. Closing connection and stopping radio in 5s...");
+            Serial.println("Notified. Disconnecting in 5s.");
             delay(5000); // Increased delay to ensure gateway processes the data
 
             // Active Disconnect and Radio OFF
@@ -256,7 +231,7 @@ void loop() {
             deviceConnected = false; 
             connectedSince = 0;
             sensorData.valid = false; // Mark data as "sent"
-            Serial.println("Cycle complete. Radio IDLE for 5 minutes.");
+            Serial.println("Cycle complete. Radio IDLE.");
         }
     } else {
         connectedSince = 0; // Reset connection timer when disconnected
