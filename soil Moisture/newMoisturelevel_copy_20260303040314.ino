@@ -33,8 +33,7 @@ const int WET_VALUE = 1300;
 // System Variables
 BLECharacteristic* pMoistureCharacteristic = nullptr;
 bool deviceConnected = false;
-unsigned long lastReadingTime = 0;
-const unsigned long READING_INTERVAL = 10000; // Send data every 10 seconds
+const unsigned long READING_INTERVAL = 300000; // Send data every 5 minutes (300,000 ms)
 const unsigned long POWER_ON_DELAY = 100;     // Delay after powering sensor
 
 // BLE Server Callbacks
@@ -50,12 +49,8 @@ class MyServerCallbacks: public BLEServerCallbacks {
     void onDisconnect(BLEServer* pServer) {
         deviceConnected = false;
         digitalWrite(STATUS_LED_PIN, LOW);
-        Serial.println("========================================");
         Serial.println("Central Gateway Disconnected");
-        Serial.println("========================================");
-        // Restart advertising to allow for reconnection
-        BLEDevice::startAdvertising();
-        Serial.println("Advertising restarted...");
+        // Radio is now managed explicitly in the loop()
     }
 };
 
@@ -97,7 +92,7 @@ float readSoilMoisture() {
 
 void setup() {
     Serial.begin(115200);
-    Serial.println("=== ESP32 Soil Moisture Sensor Node Starting ===");
+    Serial.println("ESP32 Soil Moisture Node Starting");
 
     // Setup hardware pins
     pinMode(SOIL_SENSOR_PIN, INPUT);
@@ -115,17 +110,6 @@ void setup() {
 
     Serial.print("Device Name: ");
     Serial.println(deviceName);
-
-    // Print calibration values
-    Serial.println("========================================");
-    Serial.println("Sensor Calibration Values:");
-    Serial.print("Dry Value (0%): ");
-    Serial.println(DRY_VALUE);
-    Serial.print("Wet Value (100%): ");
-    Serial.println(WET_VALUE);
-    Serial.println("Adjust DRY_VALUE and WET_VALUE in code");
-    Serial.println("based on your sensor's characteristics");
-    Serial.println("========================================");
 
     // Initialize BLE
     BLEDevice::init(deviceName.c_str());
@@ -150,67 +134,76 @@ void setup() {
     // Start the service
     pService->start();
 
-    // Start advertising
-    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-    pAdvertising->addServiceUUID(SOIL_SERVICE_UUID);
-    pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x06);
-    pAdvertising->setMaxPreferred(0x12);
-    BLEDevice::startAdvertising();
+    // Start advertising (Wait! We now start this only when data is ready in loop)
+    // BLEDevice::startAdvertising();
 
-    Serial.println("========================================");
-    Serial.println("BLE Peripheral Ready!");
-    Serial.println("Waiting for nRF9160 to connect...");
-    Serial.println("========================================");
+    Serial.println("Ready. Waiting for connection...");
 
-    // Take an initial reading for calibration check
+    // Take an initial reading
     delay(1000);
     float initialReading = readSoilMoisture();
-    Serial.print("Initial moisture reading: ");
-    Serial.print(initialReading);
-    Serial.println("%");
-    
-    if (initialReading < 0 || initialReading > 100) {
-        Serial.println("WARNING: Reading is out of range!");
-        Serial.println("Check sensor connections and calibration values.");
-    }
+    Serial.printf("Test reading: %.1f%%\n", initialReading);
 }
 
 void loop() {
-    if (deviceConnected) {
-        unsigned long currentTime = millis();
-        if (currentTime - lastReadingTime >= READING_INTERVAL) {
-            lastReadingTime = currentTime;
-
-            float moisturePercent = readSoilMoisture();
-
-            // Validate reading
-            if (moisturePercent >= 0 && moisturePercent <= 100) {
-                Serial.print("Soil moisture reading: ");
-                Serial.print(moisturePercent);
-                Serial.println("%");
-
-                // Format the moisture to one decimal place
-                char buffer[10];
-                dtostrf(moisturePercent, 4, 1, buffer);
-
-                // Set characteristic value and notify the central
-                pMoistureCharacteristic->setValue(buffer);
-                pMoistureCharacteristic->notify();
-
-                Serial.print("Sent notification: ");
-                Serial.println(buffer);
-            } else {
-                Serial.println("Invalid moisture reading, skipping transmission.");
-            }
+    unsigned long currentTime = millis();
+    static unsigned long connectedSince = 0;
+    static bool dataSent = false;
+    
+    // 1. Periodically read the sensor (every 5 minutes)
+    if (currentTime - lastReadingTime >= READING_INTERVAL || lastReadingTime == 0) {
+        lastReadingTime = currentTime;
+        
+        Serial.println("Cycle start");
+        float moisturePercent = readSoilMoisture();
+        
+        if (moisturePercent >= 0 && moisturePercent <= 100) {
+            Serial.println("Reading success. Radio ON.");
+            BLEDevice::startAdvertising(); // Radio ON
+            dataSent = false;
+        } else {
+            Serial.println("Reading failed. Radio OFF.");
         }
     }
+
+    // 2. Handle transmission and duty cycle completion
+    if (deviceConnected) {
+        if (connectedSince == 0) connectedSince = millis();
+        
+        if (!dataSent && (millis() - connectedSince >= 2000)) {
+            float moisturePercent = readSoilMoisture();
+            char buffer[10];
+            dtostrf(moisturePercent, 4, 1, buffer);
+
+            Serial.print("Sending: ");
+            Serial.println(buffer);
+
+            pMoistureCharacteristic->setValue(buffer);
+            pMoistureCharacteristic->notify();
+
+            Serial.println("Notified. Disconnecting in 5s.");
+            dataSent = true;
+            delay(5000);
+
+            // Active Disconnect and Radio OFF
+            BLEDevice::getServer()->disconnect(0); 
+            BLEDevice::getAdvertising()->stop(); // Radio OFF
+            
+            deviceConnected = false; 
+            connectedSince = 0;
+            Serial.println("Cycle complete. Radio IDLE.");
+        }
+    } else {
+        connectedSince = 0;
+    }
     
-    // Status LED blink when not connected
+    // Status LED blink when advertising
     if (!deviceConnected) {
         static unsigned long lastBlink = 0;
         static bool ledState = false;
         
+        // Blink only if we are actually advertising (roughly between reading success and connection)
+        // Simplified check for now
         if (millis() - lastBlink >= 1000) {
             ledState = !ledState;
             digitalWrite(STATUS_LED_PIN, ledState);
@@ -218,5 +211,5 @@ void loop() {
         }
     }
     
-    delay(100);
+    delay(10);
 }
