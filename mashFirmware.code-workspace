@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../../Downloads/nrf91_A02YYUW"
+		},
+		{
+			"path": "../frontend"
 		}
 	],
 	"settings": {}
