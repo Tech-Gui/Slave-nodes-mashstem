@@ -31,6 +31,8 @@ bool deviceConnected = false;
 bool irrigationPumpState = false;
 bool waterTankPumpState = false;
 unsigned long lastStatusTime = 0;
+unsigned long lastSyncTime = 0;      // Timer for periodic status sync to gateway
+const unsigned long SYNC_INTERVAL = 30000; // 30 seconds sync interval
 
 BLECharacteristic* pIrrigationChar = NULL;
 BLECharacteristic* pWaterTankChar  = NULL;
@@ -265,6 +267,23 @@ void loop() {
       digitalWrite(LED_PIN, ledState);
       lastBlink = currentTime;
     }
+  }
+
+  // Periodic Status Synchronization to Gateway (Phase 2)
+  if (deviceConnected && (currentTime - lastSyncTime >= SYNC_INTERVAL)) {
+    lastSyncTime = currentTime;
+    Serial.println("🔄 Periodic Status Sync: Sending notifications...");
+    
+    // Notify target characteristic for Irrigation
+    pIrrigationChar->setValue(irrigationPumpState ? "ACK_IR_ON" : "ACK_IR_OFF");
+    pIrrigationChar->notify();
+    
+    // Notify target characteristic for Water Tank
+    pWaterTankChar->setValue(waterTankPumpState ? "ACK_WT_ON" : "ACK_WT_OFF");
+    pWaterTankChar->notify();
+    
+    blinkLED();
+    Serial.println("Status sync complete.");
   }
 
   delay(100);
