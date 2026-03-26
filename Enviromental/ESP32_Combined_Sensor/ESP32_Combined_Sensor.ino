@@ -38,6 +38,8 @@ BLECharacteristic* pConfigChar = nullptr;
 bool deviceConnected = false;
 unsigned long lastReadingTime = 0;
 uint32_t reportIntervalMs = 60000; // Default 1 minute
+volatile bool newConnection = false; // Flag to trigger immediate reading on connect
+volatile bool justDisconnected = false; // Flag to handle re-advertising in loop()
 
 // Sensor readings
 struct {
@@ -56,17 +58,16 @@ void updateInterval(uint32_t newIntervalSec);
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
         deviceConnected = true;
+        newConnection = true; // Trigger immediate reading
         digitalWrite(STATUS_LED_PIN, HIGH);
         Serial.println("Gateway Connected");
     }
 
     void onDisconnect(BLEServer* pServer) {
         deviceConnected = false;
+        justDisconnected = true; // Handle re-advertising in loop()
         digitalWrite(STATUS_LED_PIN, LOW);
         Serial.println("Gateway Disconnected");
-        delay(500); // Brief delay for BLE stack to settle
-        BLEDevice::startAdvertising();
-        Serial.println("Advertising restarted for reconnection");
     }
 };
 
@@ -182,7 +183,36 @@ void setup() {
 void loop() {
     unsigned long currentTime = millis();
     static unsigned long lastAdvertiseRestart = 0;
+
+    // Handle disconnect re-advertising (moved out of callback to avoid blocking)
+    if (justDisconnected) {
+        justDisconnected = false;
+        delay(500); // Brief delay for BLE stack to settle
+        BLEDevice::startAdvertising();
+        Serial.println("Advertising restarted for reconnection");
+    }
+
+    // Send data IMMEDIATELY on new connection (don't wait for 60s timer)
+    if (deviceConnected && newConnection) {
+        newConnection = false;
+        delay(1000); // Give gateway time to complete GATT discovery & subscribe
+        if (readSensors()) {
+            char buffer[64];
+            snprintf(buffer, sizeof(buffer), "T:%.1f,H:%.1f,W:%.1f", 
+                     sensorData.envValid ? sensorData.temperature : 0.0f,
+                     sensorData.envValid ? sensorData.humidity : 0.0f,
+                     sensorData.waterValid ? sensorData.waterLevel : 0.0f);
+            
+            pDataChar->setValue(buffer);
+            if (deviceConnected) { // Re-check after delay
+                pDataChar->notify();
+                Serial.printf("Immediate send: %s\n", buffer);
+            }
+        }
+        lastReadingTime = currentTime; // Reset timer so next reading is in 60s
+    }
     
+    // Regular periodic readings
     if (currentTime - lastReadingTime >= reportIntervalMs || lastReadingTime == 0) {
         lastReadingTime = currentTime;
         
@@ -202,7 +232,6 @@ void loop() {
     }
 
     // Reconnection watchdog: if disconnected for > 30s, restart advertising
-    // Handles cases where the BLE stack gets stuck after an unclean gateway disconnect
     if (!deviceConnected) {
         if (currentTime - lastAdvertiseRestart >= 30000) {
             lastAdvertiseRestart = currentTime;
@@ -210,7 +239,7 @@ void loop() {
             BLEDevice::startAdvertising();
         }
     } else {
-        lastAdvertiseRestart = currentTime; // Reset timer while connected
+        lastAdvertiseRestart = currentTime;
     }
 
     // Status blink
