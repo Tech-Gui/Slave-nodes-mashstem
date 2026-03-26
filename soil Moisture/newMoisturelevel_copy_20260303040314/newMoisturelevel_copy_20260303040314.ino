@@ -51,7 +51,10 @@ class MyServerCallbacks: public BLEServerCallbacks {
         deviceConnected = false;
         digitalWrite(STATUS_LED_PIN, LOW);
         Serial.println("Central Gateway Disconnected");
-        // Radio is now managed explicitly in the loop()
+        // Always restart advertising so gateway can reconnect
+        delay(500); // Brief delay for BLE stack to settle
+        BLEDevice::startAdvertising();
+        Serial.println("Advertising restarted for reconnection");
     }
 };
 
@@ -148,8 +151,7 @@ void setup() {
 
 void loop() {
     unsigned long currentTime = millis();
-    static unsigned long connectedSince = 0;
-    static bool dataSent = false;
+    static unsigned long lastAdvertiseRestart = 0;
     
     // 1. Periodically read the sensor (every 5 minutes)
     if (currentTime - lastReadingTime >= READING_INTERVAL || lastReadingTime == 0) {
@@ -159,52 +161,38 @@ void loop() {
         float moisturePercent = readSoilMoisture();
         
         if (moisturePercent >= 0 && moisturePercent <= 100) {
-            Serial.println("Reading success. Radio ON.");
-            BLEDevice::startAdvertising(); // Radio ON
-            dataSent = false;
-        } else {
-            Serial.println("Reading failed. Radio OFF.");
-        }
-    }
-
-    // 2. Handle transmission and duty cycle completion
-    if (deviceConnected) {
-        if (connectedSince == 0) connectedSince = millis();
-        
-        if (!dataSent && (millis() - connectedSince >= 2000)) {
-            float moisturePercent = readSoilMoisture();
+            // Update the characteristic value so gateway can read it
             char buffer[10];
             dtostrf(moisturePercent, 4, 1, buffer);
-
-            Serial.print("Sending: ");
-            Serial.println(buffer);
-
             pMoistureCharacteristic->setValue(buffer);
-            pMoistureCharacteristic->notify();
-
-            Serial.println("Notified. Disconnecting in 5s.");
-            dataSent = true;
-            delay(5000);
-
-            // Active Disconnect and Radio OFF
-            BLEDevice::getServer()->disconnect(0); 
-            BLEDevice::getAdvertising()->stop(); // Radio OFF
             
-            deviceConnected = false; 
-            connectedSince = 0;
-            Serial.println("Cycle complete. Radio IDLE.");
+            // If connected, send notification immediately
+            if (deviceConnected) {
+                pMoistureCharacteristic->notify();
+                Serial.printf("Sent notification: %s\n", buffer);
+            }
+        } else {
+            Serial.println("Reading failed.");
+        }
+    }
+
+    // 2. Reconnection watchdog: if disconnected for > 30s, restart advertising
+    //    This handles cases where the BLE stack gets stuck after an unclean disconnect
+    if (!deviceConnected) {
+        if (currentTime - lastAdvertiseRestart >= 30000) {
+            lastAdvertiseRestart = currentTime;
+            Serial.println("Watchdog: Restarting BLE advertising...");
+            BLEDevice::startAdvertising();
         }
     } else {
-        connectedSince = 0;
+        lastAdvertiseRestart = currentTime; // Reset timer while connected
     }
     
-    // Status LED blink when advertising
+    // Status LED blink when not connected
     if (!deviceConnected) {
         static unsigned long lastBlink = 0;
         static bool ledState = false;
         
-        // Blink only if we are actually advertising (roughly between reading success and connection)
-        // Simplified check for now
         if (millis() - lastBlink >= 1000) {
             ledState = !ledState;
             digitalWrite(STATUS_LED_PIN, ledState);

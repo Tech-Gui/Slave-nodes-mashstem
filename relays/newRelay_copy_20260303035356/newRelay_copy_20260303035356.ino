@@ -58,6 +58,7 @@ class MyServerCallbacks : public BLEServerCallbacks {
       Serial.println("Central Gateway Disconnected");
       Serial.println("========================================");
       // Restart advertising to allow for reconnection
+      delay(500); // Brief delay for BLE stack to settle
       BLEDevice::startAdvertising();
       Serial.println("Advertising restarted...");
     }
@@ -75,7 +76,7 @@ class IrrigationCallbacks : public BLECharacteristicCallbacks {
         Serial.println(value);
 
         if (value == "IR_ON") {
-          digitalWrite(IRRIGATION_RELAY_PIN, LOW);  // Active LOW
+          digitalWrite(IRRIGATION_RELAY_PIN, HIGH);  // Changed to Active HIGH
           irrigationPumpState = true;
           blinkLED();
           pCharacteristic->setValue("ACK_IR_ON");
@@ -83,7 +84,7 @@ class IrrigationCallbacks : public BLECharacteristicCallbacks {
           Serial.println("🌱 Irrigation pump turned ON");
         }
         else if (value == "IR_OFF") {
-          digitalWrite(IRRIGATION_RELAY_PIN, HIGH);  // Active LOW
+          digitalWrite(IRRIGATION_RELAY_PIN, LOW);   // Changed to Active HIGH
           irrigationPumpState = false;
           blinkLED();
           pCharacteristic->setValue("ACK_IR_OFF");
@@ -113,7 +114,7 @@ class WaterTankCallbacks : public BLECharacteristicCallbacks {
         Serial.println(value);
 
         if (value == "WT_ON") {
-          digitalWrite(WATER_TANK_RELAY_PIN, LOW);  // Active LOW
+          digitalWrite(WATER_TANK_RELAY_PIN, HIGH);  // Changed to Active HIGH
           waterTankPumpState = true;
           blinkLED();
           pCharacteristic->setValue("ACK_WT_ON");
@@ -121,7 +122,7 @@ class WaterTankCallbacks : public BLECharacteristicCallbacks {
           Serial.println("💧 Water tank pump turned ON");
         }
         else if (value == "WT_OFF") {
-          digitalWrite(WATER_TANK_RELAY_PIN, HIGH);  // Active LOW
+          digitalWrite(WATER_TANK_RELAY_PIN, LOW);   // Changed to Active HIGH
           waterTankPumpState = false;
           blinkLED();
           pCharacteristic->setValue("ACK_WT_OFF");
@@ -162,14 +163,13 @@ void setup() {
   Serial.begin(115200);
   Serial.println("=== ESP32 Dual-Channel Relay Node Starting ===");
 
-  // Setup hardware pins
+  // Start with both pumps OFF
+  // Assuming ACTIVE HIGH based on user report (HIGH turned them ON at boot)
+  digitalWrite(IRRIGATION_RELAY_PIN, LOW);
+  digitalWrite(WATER_TANK_RELAY_PIN, LOW);
   pinMode(IRRIGATION_RELAY_PIN, OUTPUT);
   pinMode(WATER_TANK_RELAY_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
-
-  // Start with both pumps OFF (HIGH for active-low relay)
-  digitalWrite(IRRIGATION_RELAY_PIN, HIGH);
-  digitalWrite(WATER_TANK_RELAY_PIN, HIGH);
   digitalWrite(LED_PIN, LOW);
   irrigationPumpState = false;
   waterTankPumpState = false;
@@ -227,6 +227,7 @@ void setup() {
 // ═══════════════════════════════════════════════
 void loop() {
   unsigned long currentTime = millis();
+  static unsigned long lastAdvertiseRestart = 0;
 
   // Print status every 10 seconds
   if (currentTime - lastStatusTime >= 10000) {
@@ -240,6 +241,18 @@ void loop() {
     Serial.print(" | Uptime: ");
     Serial.print(millis() / 1000);
     Serial.println("s");
+  }
+
+  // Reconnection watchdog: if disconnected for > 30s, restart advertising
+  // Handles cases where the BLE stack gets stuck after an unclean gateway disconnect
+  if (!deviceConnected) {
+    if (currentTime - lastAdvertiseRestart >= 30000) {
+      lastAdvertiseRestart = currentTime;
+      Serial.println("Watchdog: Restarting BLE advertising...");
+      BLEDevice::startAdvertising();
+    }
+  } else {
+    lastAdvertiseRestart = currentTime; // Reset timer while connected
   }
 
   // Handle LED when not connected (blink to show alive)

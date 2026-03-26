@@ -64,7 +64,9 @@ class MyServerCallbacks: public BLEServerCallbacks {
         deviceConnected = false;
         digitalWrite(STATUS_LED_PIN, LOW);
         Serial.println("Gateway Disconnected");
+        delay(500); // Brief delay for BLE stack to settle
         BLEDevice::startAdvertising();
+        Serial.println("Advertising restarted for reconnection");
     }
 };
 
@@ -179,6 +181,7 @@ void setup() {
 
 void loop() {
     unsigned long currentTime = millis();
+    static unsigned long lastAdvertiseRestart = 0;
     
     if (currentTime - lastReadingTime >= reportIntervalMs || lastReadingTime == 0) {
         lastReadingTime = currentTime;
@@ -196,6 +199,18 @@ void loop() {
                 Serial.printf("Sent: %s\n", buffer);
             }
         }
+    }
+
+    // Reconnection watchdog: if disconnected for > 30s, restart advertising
+    // Handles cases where the BLE stack gets stuck after an unclean gateway disconnect
+    if (!deviceConnected) {
+        if (currentTime - lastAdvertiseRestart >= 30000) {
+            lastAdvertiseRestart = currentTime;
+            Serial.println("Watchdog: Restarting BLE advertising...");
+            BLEDevice::startAdvertising();
+        }
+    } else {
+        lastAdvertiseRestart = currentTime; // Reset timer while connected
     }
 
     // Status blink
