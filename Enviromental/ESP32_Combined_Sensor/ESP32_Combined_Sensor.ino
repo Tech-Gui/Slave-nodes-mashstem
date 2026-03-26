@@ -36,10 +36,9 @@ Preferences preferences;
 BLECharacteristic* pDataChar = nullptr;
 BLECharacteristic* pConfigChar = nullptr;
 bool deviceConnected = false;
+bool dataSent = false;
 unsigned long lastReadingTime = 0;
 uint32_t reportIntervalMs = 60000; // Default 1 minute
-volatile bool newConnection = false; // Flag to trigger immediate reading on connect
-volatile bool justDisconnected = false; // Flag to handle re-advertising in loop()
 
 // Sensor readings
 struct {
@@ -58,16 +57,22 @@ void updateInterval(uint32_t newIntervalSec);
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
         deviceConnected = true;
-        newConnection = true; // Trigger immediate reading
         digitalWrite(STATUS_LED_PIN, HIGH);
-        Serial.println("Gateway Connected");
+        Serial.println("========================================");
+        Serial.println("Central Gateway Connected");
+        Serial.println("========================================");
     }
 
     void onDisconnect(BLEServer* pServer) {
         deviceConnected = false;
-        justDisconnected = true; // Handle re-advertising in loop()
         digitalWrite(STATUS_LED_PIN, LOW);
-        Serial.println("Gateway Disconnected");
+        Serial.println("Central Gateway Disconnected");
+        // Restart advertising only if data transmission wasn't completed
+        if (!dataSent) {
+            delay(500); // Brief delay for BLE stack to settle
+            BLEDevice::startAdvertising();
+            Serial.println("Advertising restarted for reconnection");
+        }
     }
 };
 
@@ -175,80 +180,87 @@ void setup() {
     pService->start();
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SENSOR_SERVICE_UUID);
-    BLEDevice::startAdvertising();
+    // BLEDevice::startAdvertising(); // Start only when data is ready in loop
 
-    Serial.println("BLE Ready. Payload: T:xx.x,H:yy.y,W:zz.z");
+    Serial.println("BLE Ready. Waiting for connection...");
 }
 
 void loop() {
     unsigned long currentTime = millis();
+    static unsigned long connectedSince = 0;
     static unsigned long lastAdvertiseRestart = 0;
 
-    // Handle disconnect re-advertising (moved out of callback to avoid blocking)
-    if (justDisconnected) {
-        justDisconnected = false;
-        delay(500); // Brief delay for BLE stack to settle
-        BLEDevice::startAdvertising();
-        Serial.println("Advertising restarted for reconnection");
-    }
-
-    // Send data IMMEDIATELY on new connection (don't wait for 60s timer)
-    if (deviceConnected && newConnection) {
-        newConnection = false;
-        delay(1000); // Give gateway time to complete GATT discovery & subscribe
-        if (readSensors()) {
-            char buffer[64];
-            snprintf(buffer, sizeof(buffer), "T:%.1f,H:%.1f,W:%.1f", 
-                     sensorData.envValid ? sensorData.temperature : 0.0f,
-                     sensorData.envValid ? sensorData.humidity : 0.0f,
-                     sensorData.waterValid ? sensorData.waterLevel : 0.0f);
-            
-            pDataChar->setValue(buffer);
-            if (deviceConnected) { // Re-check after delay
-                pDataChar->notify();
-                Serial.printf("Immediate send: %s\n", buffer);
-            }
-        }
-        lastReadingTime = currentTime; // Reset timer so next reading is in 60s
-    }
-    
-    // Regular periodic readings
+    // 1. Periodically read the sensor
     if (currentTime - lastReadingTime >= reportIntervalMs || lastReadingTime == 0) {
         lastReadingTime = currentTime;
         
+        Serial.println("Cycle start");
         if (readSensors()) {
+            Serial.println("Reading success. Radio ON.");
+            BLEDevice::startAdvertising(); // Radio ON
+            dataSent = false;
+        } else {
+            Serial.println("Reading failed. Radio OFF.");
+        }
+    }
+
+    // 2. Handle transmission and duty cycle completion
+    if (deviceConnected) {
+        if (connectedSince == 0) connectedSince = millis();
+        
+        // Wait 2 seconds (like soil moisture) to let GATT discoveries finish
+        if (!dataSent && (millis() - connectedSince >= 2000)) {
             char buffer[64];
             snprintf(buffer, sizeof(buffer), "T:%.1f,H:%.1f,W:%.1f", 
                      sensorData.envValid ? sensorData.temperature : 0.0f,
                      sensorData.envValid ? sensorData.humidity : 0.0f,
                      sensorData.waterValid ? sensorData.waterLevel : 0.0f);
             
+            Serial.print("Sending: ");
+            Serial.println(buffer);
+
             pDataChar->setValue(buffer);
-            if (deviceConnected) {
-                pDataChar->notify();
-                Serial.printf("Sent: %s\n", buffer);
-            }
+            pDataChar->notify();
+
+            Serial.println("Notified. Disconnecting in 5s.");
+            dataSent = true;
+            delay(5000);
+
+            // Active Disconnect and Radio OFF
+            BLEDevice::getServer()->disconnect(0); 
+            BLEDevice::getAdvertising()->stop(); // Radio OFF
+            
+            deviceConnected = false; 
+            connectedSince = 0;
+            Serial.println("Cycle complete. Radio IDLE.");
         }
+    } else {
+        connectedSince = 0;
     }
 
-    // Reconnection watchdog: if disconnected for > 30s, restart advertising
-    if (!deviceConnected) {
+    // 3. Reconnection watchdog: if disconnected for > 30s, restart advertising
+    // Only kick in if we are supposed to be advertising (data hasn't been sent yet)
+    if (!deviceConnected && !dataSent) {
         if (currentTime - lastAdvertiseRestart >= 30000) {
             lastAdvertiseRestart = currentTime;
             Serial.println("Watchdog: Restarting BLE advertising...");
             BLEDevice::startAdvertising();
         }
     } else {
-        lastAdvertiseRestart = currentTime;
+        lastAdvertiseRestart = currentTime; // Reset timer while connected or strictly idle
     }
 
     // Status blink
-    if (!deviceConnected) {
+    if (!deviceConnected && !dataSent) {
         static unsigned long lastBlink = 0;
+        static bool ledState = false;
         if (millis() - lastBlink >= 1000) {
-            digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
+            ledState = !ledState;
+            digitalWrite(STATUS_LED_PIN, ledState);
             lastBlink = millis();
         }
+    } else if (dataSent) {
+        digitalWrite(STATUS_LED_PIN, LOW); // Ensure LED is off during IDLE
     }
     
     delay(10);
