@@ -34,6 +34,11 @@ unsigned long lastStatusTime = 0;
 unsigned long lastSyncTime = 0;      // Timer for periodic status sync to gateway
 const unsigned long SYNC_INTERVAL = 30000; // 30 seconds sync interval
 
+// 30-minute Safety Watchdog Timers
+unsigned long lastIrrigationOnTime = 0;
+unsigned long lastWaterTankOnTime = 0;
+const unsigned long AUTO_OFF_TIMEOUT = 30 * 60 * 1000UL; // 30 minutes in ms
+
 BLECharacteristic* pIrrigationChar = NULL;
 BLECharacteristic* pWaterTankChar  = NULL;
 
@@ -80,6 +85,7 @@ class IrrigationCallbacks : public BLECharacteristicCallbacks {
         if (value == "IR_ON") {
           digitalWrite(IRRIGATION_RELAY_PIN, HIGH);  // Changed to Active HIGH
           irrigationPumpState = true;
+          lastIrrigationOnTime = millis(); // Reset safety watchdog
           blinkLED();
           pCharacteristic->setValue("ACK_IR_ON");
           pCharacteristic->notify();
@@ -118,6 +124,7 @@ class WaterTankCallbacks : public BLECharacteristicCallbacks {
         if (value == "WT_ON") {
           digitalWrite(WATER_TANK_RELAY_PIN, HIGH);  // Changed to Active HIGH
           waterTankPumpState = true;
+          lastWaterTankOnTime = millis(); // Reset safety watchdog
           blinkLED();
           pCharacteristic->setValue("ACK_WT_ON");
           pCharacteristic->notify();
@@ -284,6 +291,27 @@ void loop() {
     
     blinkLED();
     Serial.println("Status sync complete.");
+  }
+
+  // Safety Pump Auto-Off Watchdog
+  if (irrigationPumpState && (currentTime - lastIrrigationOnTime >= AUTO_OFF_TIMEOUT)) {
+    Serial.println("🚨 WATCHDOG TRIGGERED: Irrigation Pump running for >30 mins! Auto-stopping.");
+    digitalWrite(IRRIGATION_RELAY_PIN, LOW);
+    irrigationPumpState = false;
+    if (deviceConnected && pIrrigationChar) {
+        pIrrigationChar->setValue("ACK_IR_OFF");
+        pIrrigationChar->notify();
+    }
+  }
+
+  if (waterTankPumpState && (currentTime - lastWaterTankOnTime >= AUTO_OFF_TIMEOUT)) {
+    Serial.println("🚨 WATCHDOG TRIGGERED: Water Tank Pump running for >30 mins! Auto-stopping.");
+    digitalWrite(WATER_TANK_RELAY_PIN, LOW);
+    waterTankPumpState = false;
+    if (deviceConnected && pWaterTankChar) {
+        pWaterTankChar->setValue("ACK_WT_OFF");
+        pWaterTankChar->notify();
+    }
   }
 
   delay(100);
