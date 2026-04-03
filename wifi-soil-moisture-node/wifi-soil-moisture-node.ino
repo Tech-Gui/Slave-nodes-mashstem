@@ -15,10 +15,13 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include "esp_mac.h"
+
 
 // ═══════════════ Wi-Fi Configuration ═══════════════
-const char* ssid     = "TheParks_22-4L";
-const char* password = "45289477";
+const char* ssid     = "mashnetwork";
+const char* password = "mash2026";
+
 
 // ═══════════════ Backend Configuration ═══════════════
 const char* backendBase = "http://wifi-nodes-backend-rfq.app.cern.ch/api";
@@ -44,11 +47,13 @@ uint32_t reportIntervalSec = DEFAULT_INTERVAL_SEC;
 
 String getMacSensorId() {
   uint8_t mac[6];
-  WiFi.macAddress(mac);
+  esp_read_mac(mac, ESP_MAC_WIFI_STA); // Read directly from hardware eFuse
   char id[20];
   sprintf(id, "ESP32_%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   return String(id);
 }
+
+
 
 // ───────────── Fetch Configuration (Interval) ─────────────
 
@@ -135,8 +140,10 @@ void setup() {
   pinMode(STATUS_LED_PIN, OUTPUT);
   digitalWrite(POWER_PIN, LOW);
   digitalWrite(STATUS_LED_PIN, LOW);
+  WiFi.mode(WIFI_STA); // Ensure radio is ready for MAC reading
 
   // Generate MAC-based sensor ID
+
   sensorId = getMacSensorId();
   Serial.print("Sensor ID: ");
   Serial.println(sensorId);

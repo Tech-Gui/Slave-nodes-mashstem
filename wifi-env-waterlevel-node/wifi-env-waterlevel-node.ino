@@ -18,10 +18,12 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <DHT.h>
+#include "esp_mac.h"
+
 
 // ═══════════════ Wi-Fi Configuration ═══════════════
-const char* ssid     = "TheParks_22-4L";
-const char* password = "45289477";
+const char* ssid     = "mashnetwork";
+const char* password = "mash2026";
 
 // ═══════════════ Backend Configuration ═══════════════
 const char* backendBase = "http://wifi-nodes-backend-rfq.app.cern.ch/api";
@@ -111,8 +113,10 @@ void setup() {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
+  WiFi.mode(WIFI_STA); // Ensure radio is ready for MAC reading
 
   // Generate MAC-based sensor ID
+
   sensorId = getMacSensorId();
   Serial.print("Sensor ID: ");
   Serial.println(sensorId);
@@ -159,7 +163,30 @@ void setup() {
   esp_deep_sleep_start();
 }
 
+String getMacSensorId() {
+  uint8_t mac[6];
+  esp_read_mac(mac, ESP_MAC_WIFI_STA); // Read directly from hardware eFuse
+  char buf[20];
+  sprintf(buf, "ESP32_%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return String(buf);
+}
+
+
+float readDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000); // 30ms timeout
+  if (duration == 0) return -1;
+  
+  float distanceCm = duration * 0.034 / 2;
+  if (distanceCm > maxDistance) return -1;
+  return distanceCm;
+}
+
 void loop() {
   // Never reached in Deep Sleep mode
 }
-

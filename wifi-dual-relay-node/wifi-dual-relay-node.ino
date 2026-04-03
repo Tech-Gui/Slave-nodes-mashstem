@@ -20,10 +20,13 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include "esp_mac.h"
+
 
 // ═══════════════ Wi-Fi Configuration ═══════════════
-const char* ssid     = "TheParks_22-4L";
-const char* password = "45289477";
+const char* ssid     = "mashnetwork";
+const char* password = "mash2026";
+
 
 // ═══════════════ Backend Configuration ═══════════════
 const char* backendBase = "http://wifi-nodes-backend-rfq.app.cern.ch/api";
@@ -53,11 +56,13 @@ unsigned long waterTankOnSince  = 0;
 
 String getMacRelayId() {
   uint8_t mac[6];
-  WiFi.macAddress(mac);
+  esp_read_mac(mac, ESP_MAC_WIFI_STA); // Read directly from hardware eFuse
   char id[20];
   sprintf(id, "ESP32_%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   return String(id);
 }
+
+
 
 // ───────────── Relay Control ─────────────
 
@@ -182,8 +187,10 @@ void setup() {
   pinMode(WATER_TANK_RELAY_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
+  WiFi.mode(WIFI_STA); // Ensure radio is ready for MAC reading
 
   WiFi.begin(ssid, password);
+
   Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
