@@ -28,19 +28,25 @@
 
 // ───────────── System Variables ─────────────
 bool deviceConnected = false;
+bool oldDeviceConnected = false;
 bool irrigationPumpState = false;
 bool waterTankPumpState = false;
 unsigned long lastStatusTime = 0;
 unsigned long lastSyncTime = 0;      // Timer for periodic status sync to gateway
 const unsigned long SYNC_INTERVAL = 30000; // 30 seconds sync interval
+const unsigned long ADVERTISING_WATCHDOG_INTERVAL = 30000;
+const unsigned long BLE_RECOVERY_REBOOT_TIMEOUT = 90000;
 
 // 30-minute Safety Watchdog Timers
 unsigned long lastIrrigationOnTime = 0;
 unsigned long lastWaterTankOnTime = 0;
 const unsigned long AUTO_OFF_TIMEOUT = 30 * 60 * 1000UL; // 30 minutes in ms
+unsigned long disconnectedSince = 0;
 
 BLECharacteristic* pIrrigationChar = NULL;
 BLECharacteristic* pWaterTankChar  = NULL;
+BLEServer* pServer = NULL;
+BLEAdvertising* pAdvertising = NULL;
 
 // Forward declarations
 void blinkLED();
@@ -52,22 +58,10 @@ void printStatus();
 class MyServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       deviceConnected = true;
-      digitalWrite(LED_PIN, HIGH);
-      Serial.println("========================================");
-      Serial.println("Central Gateway Connected");
-      Serial.println("========================================");
     };
 
     void onDisconnect(BLEServer* pServer) {
       deviceConnected = false;
-      digitalWrite(LED_PIN, LOW);
-      Serial.println("========================================");
-      Serial.println("Central Gateway Disconnected");
-      Serial.println("========================================");
-      // Restart advertising to allow for reconnection
-      delay(500); // Brief delay for BLE stack to settle
-      BLEDevice::startAdvertising();
-      Serial.println("Advertising restarted...");
     }
 };
 
@@ -165,6 +159,8 @@ void printStatus() {
   Serial.println(waterTankPumpState ? "ON 💧" : "OFF");
 }
 
+
+
 // ═══════════════════════════════════════════════
 // Setup
 // ═══════════════════════════════════════════════
@@ -189,7 +185,7 @@ void setup() {
   Serial.println("Device Name: ESP32_Dual_Relay");
 
   // Create the BLE Server
-  BLEServer* pServer = BLEDevice::createServer();
+  pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
   // Create the BLE Service
@@ -217,9 +213,12 @@ void setup() {
   pService->start();
 
   // Start advertising
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(DUAL_RELAY_SERVICE_UUID);
+  pAdvertising = BLEDevice::getAdvertising();
+  // DO NOT add the 128-bit Service UUID to advertising. It pushes the device name
+  // out of the 31-byte primary packet. The gateway connects by Name anyway.
   pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06); // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x12);
   BLEDevice::startAdvertising();
 
   Serial.println("========================================");
@@ -238,6 +237,33 @@ void loop() {
   unsigned long currentTime = millis();
   static unsigned long lastAdvertiseRestart = 0;
 
+  // Handle Disconnection Edge
+  if (!deviceConnected && oldDeviceConnected) {
+    disconnectedSince = millis();
+    digitalWrite(LED_PIN, LOW);
+    Serial.println("========================================");
+    Serial.println("Central Gateway Disconnected");
+    Serial.println("========================================");
+    
+    // Give the bluetooth stack the chance to get things ready
+    delay(500);
+    pServer->startAdvertising(); // restart advertising
+    Serial.println("Advertising restarted for reconnection");
+    
+    oldDeviceConnected = deviceConnected;
+  }
+
+  // Handle Connection Edge
+  if (deviceConnected && !oldDeviceConnected) {
+    disconnectedSince = 0;
+    digitalWrite(LED_PIN, HIGH);
+    Serial.println("========================================");
+    Serial.println("Central Gateway Connected");
+    Serial.println("========================================");
+    
+    oldDeviceConnected = deviceConnected;
+  }
+
   // Print status every 10 seconds
   if (currentTime - lastStatusTime >= 10000) {
     lastStatusTime = currentTime;
@@ -255,12 +281,24 @@ void loop() {
   // Reconnection watchdog: if disconnected for > 30s, restart advertising
   // Handles cases where the BLE stack gets stuck after an unclean gateway disconnect
   if (!deviceConnected) {
-    if (currentTime - lastAdvertiseRestart >= 30000) {
+    if (disconnectedSince == 0) {
+      disconnectedSince = currentTime;
+    }
+
+    if (currentTime - lastAdvertiseRestart >= ADVERTISING_WATCHDOG_INTERVAL) {
       lastAdvertiseRestart = currentTime;
       Serial.println("Watchdog: Restarting BLE advertising...");
-      BLEDevice::startAdvertising();
+      pServer->startAdvertising();
+      Serial.println("BLE recovery: watchdog timeout");
+    }
+
+    if (currentTime - disconnectedSince >= BLE_RECOVERY_REBOOT_TIMEOUT) {
+      Serial.println("BLE watchdog: Relay stuck disconnected after recovery attempts. Rebooting ESP32...");
+      delay(200);
+      ESP.restart();
     }
   } else {
+    disconnectedSince = 0;
     lastAdvertiseRestart = currentTime; // Reset timer while connected
   }
 

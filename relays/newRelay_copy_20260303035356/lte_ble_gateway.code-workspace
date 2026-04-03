@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "../../../../lte_ble_gateway"
+		},
+		{
+			"path": "../../../frontend"
+		},
+		{
+			"path": "../../../op-pa"
+		},
+		{
+			"path": "../.."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.css": "postcss",
+			"ble.h": "c"
+		}
+	}
+}

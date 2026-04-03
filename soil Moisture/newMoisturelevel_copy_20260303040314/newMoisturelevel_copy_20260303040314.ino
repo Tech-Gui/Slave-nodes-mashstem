@@ -25,8 +25,8 @@
 // #define DRY_VALUE 4095     // ADC value when sensor is in dry air
 // #define WET_VALUE 1500     // ADC value when sensor is in water
 
-const int DRY_VALUE = 3200;
-const int WET_VALUE = 1300;
+const int DRY_VALUE = 4095;
+const int WET_VALUE = 2118;
 #define MIN_MOISTURE 0     // Minimum moisture percentage
 #define MAX_MOISTURE 100   // Maximum moisture percentage
 
