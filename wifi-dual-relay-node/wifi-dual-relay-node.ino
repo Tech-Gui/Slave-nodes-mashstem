@@ -40,6 +40,10 @@ String relayId;
 #define WATER_TANK_RELAY_PIN 27
 #define LED_PIN              2
 
+// Most relay modules for ESP32 are active LOW (LOW=ON, HIGH=OFF)
+#define RELAY_ON  HIGH
+#define RELAY_OFF LOW
+
 // ═══════════════ State ═══════════════
 bool irrigationState = false;
 bool waterTankState  = false;
@@ -68,16 +72,16 @@ String getMacRelayId() {
 
 void setIrrigation(bool state) {
   irrigationState = state;
-  digitalWrite(IRRIGATION_RELAY_PIN, state ? HIGH : LOW);
+  digitalWrite(IRRIGATION_RELAY_PIN, state ? RELAY_ON : RELAY_OFF);
   if (state) irrigationOnSince = millis();
-  Serial.printf("🌱 Irrigation: %s\n", state ? "ON" : "OFF");
+  Serial.printf("🌱 Irrigation: %s (at %lu)\n", state ? "ON" : "OFF", millis());
 }
 
 void setWaterTank(bool state) {
   waterTankState = state;
-  digitalWrite(WATER_TANK_RELAY_PIN, state ? HIGH : LOW);
+  digitalWrite(WATER_TANK_RELAY_PIN, state ? RELAY_ON : RELAY_OFF);
   if (state) waterTankOnSince = millis();
-  Serial.printf("💧 Water Tank: %s\n", state ? "ON" : "OFF");
+  Serial.printf("💧 Water Tank: %s (at %lu)\n", state ? "ON" : "OFF", millis());
 }
 
 // ───────────── Poll Backend ─────────────
@@ -89,6 +93,7 @@ void pollCommands() {
   String url = String(backendBase) + "/relay/pending?relay_id=" + relayId;
   http.begin(url);
   http.addHeader("x-api-key", apiKey);
+  http.setTimeout(10000); // 10s timeout to prevent hangs
   int code = http.GET();
 
   if (code == 200) {
@@ -133,6 +138,7 @@ void fetchConfiguration() {
   String url = String(backendBase) + "/sensors/" + relayId + "/config";
   http.begin(url);
   http.addHeader("x-api-key", apiKey);
+  http.setTimeout(10000); // 10s timeout to prevent hangs
 
   int code = http.GET();
   if (code == 200) {
@@ -166,6 +172,7 @@ void reportStatus() {
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("x-api-key", apiKey);
+  http.setTimeout(10000); // 10s timeout to prevent hangs
 
   String payload = "{\"relay_id\":\"" + relayId
     + "\",\"irrigation_state\":" + (irrigationState ? "true" : "false")
@@ -181,8 +188,8 @@ void setup() {
   Serial.begin(115200);
   Serial.println("=== ESP32 Dual Relay Node (Wi-Fi) ===");
 
-  digitalWrite(IRRIGATION_RELAY_PIN, LOW);
-  digitalWrite(WATER_TANK_RELAY_PIN, LOW);
+  digitalWrite(IRRIGATION_RELAY_PIN, RELAY_OFF);
+  digitalWrite(WATER_TANK_RELAY_PIN, RELAY_OFF);
   pinMode(IRRIGATION_RELAY_PIN, OUTPUT);
   pinMode(WATER_TANK_RELAY_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
@@ -232,16 +239,17 @@ void loop() {
   }
 
 
-  // Safety Watchdog
+  // Safety Watchdog: Re-check time *after* networking to prevent lag-induced trigger
   now = millis(); 
   if (irrigationState && (now - irrigationOnSince >= AUTO_OFF_TIMEOUT)) {
-    Serial.println("🚨 WATCHDOG: Irrigation > 30min. Auto-stopping.");
+    Serial.printf("🚨 WATCHDOG: Irrigation triggered. Uptime: %lu, Started: %lu, Elapsed: %lu\n", now, irrigationOnSince, now - irrigationOnSince);
     setIrrigation(false);
     reportStatus();
   }
 
+  now = millis();
   if (waterTankState && (now - waterTankOnSince >= AUTO_OFF_TIMEOUT)) {
-    Serial.println("🚨 WATCHDOG: Water tank > 30min. Auto-stopping.");
+    Serial.printf("🚨 WATCHDOG: Water Tank triggered. Uptime: %lu, Started: %lu, Elapsed: %lu\n", now, waterTankOnSince, now - waterTankOnSince);
     setWaterTank(false);
     reportStatus();
   }
