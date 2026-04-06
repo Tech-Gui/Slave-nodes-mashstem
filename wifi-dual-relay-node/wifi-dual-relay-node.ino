@@ -54,6 +54,8 @@ const unsigned long AUTO_OFF_TIMEOUT = 30 * 60 * 1000UL; // 30 min
 unsigned long lastPollTime = 0;
 unsigned long irrigationOnSince = 0;
 unsigned long waterTankOnSince  = 0;
+int consecutiveFailures = 0;
+bool lastPollSuccessful = true;
 
 
 // ───────────── Generate relay ID from MAC ─────────────
@@ -73,6 +75,7 @@ String getMacRelayId() {
 void setIrrigation(bool state) {
   irrigationState = state;
   digitalWrite(IRRIGATION_RELAY_PIN, state ? RELAY_ON : RELAY_OFF);
+  delay(100); // Power stabilization
   if (state) irrigationOnSince = millis();
   Serial.printf("🌱 Irrigation: %s (at %lu)\n", state ? "ON" : "OFF", millis());
 }
@@ -80,14 +83,15 @@ void setIrrigation(bool state) {
 void setWaterTank(bool state) {
   waterTankState = state;
   digitalWrite(WATER_TANK_RELAY_PIN, state ? RELAY_ON : RELAY_OFF);
+  delay(100); // Power stabilization
   if (state) waterTankOnSince = millis();
   Serial.printf("💧 Water Tank: %s (at %lu)\n", state ? "ON" : "OFF", millis());
 }
 
 // ───────────── Poll Backend ─────────────
 
-void pollCommands() {
-  if (WiFi.status() != WL_CONNECTED) return;
+bool pollCommands() {
+  if (WiFi.status() != WL_CONNECTED) return false;
 
   HTTPClient http;
   String url = String(backendBase) + "/relay/pending?relay_id=" + relayId;
@@ -96,7 +100,10 @@ void pollCommands() {
   http.setTimeout(10000); // 10s timeout to prevent hangs
   int code = http.GET();
 
+  bool success = false;
+
   if (code == 200) {
+    success = true;
     String body = http.getString();
 
     JsonDocument doc;
@@ -104,7 +111,7 @@ void pollCommands() {
     if (err) {
       Serial.printf("JSON parse error: %s\n", err.c_str());
       http.end();
-      return;
+      return false;
     }
 
     int count = doc["count"] | 0;
@@ -127,6 +134,7 @@ void pollCommands() {
     Serial.printf("Poll error: %d\n", code);
   }
   http.end();
+  return success;
 }
 
 // ───────────── Fetch Configuration (Interval) ─────────────
@@ -231,11 +239,24 @@ void loop() {
     return;
   }
 
-  if (now - lastPollTime >= pollIntervalMs) {
+  unsigned long currentInterval = lastPollSuccessful ? pollIntervalMs : 1000; // Aggressive 1s retry on fail 
+
+  if (now - lastPollTime >= currentInterval) {
     lastPollTime = now;
-    // fetchConfiguration(); // Disabled: Static 5s interval required for dual relay
-    pollCommands();
-    reportStatus();
+    lastPollSuccessful = pollCommands();
+    
+    if (!lastPollSuccessful) {
+      consecutiveFailures++;
+      if (consecutiveFailures >= 3) {
+        Serial.println("🔄 3 consecutive failures. Resetting Wi-Fi stack...");
+        WiFi.disconnect();
+        WiFi.reconnect();
+        consecutiveFailures = 0;
+      }
+    } else {
+      consecutiveFailures = 0;
+      reportStatus(); // Success! Confirm status immediately
+    }
   }
 
 

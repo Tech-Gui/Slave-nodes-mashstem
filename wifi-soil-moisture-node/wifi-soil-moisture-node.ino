@@ -33,14 +33,14 @@ String sensorId;
 // ═══════════════ Soil Sensor ═══════════════
 #define SOIL_SENSOR_PIN 34
 #define POWER_PIN       4
-const int DRY_VALUE = 4095;
-const int WET_VALUE = 2118;
+int dryValue = 4095;
+int wetValue = 2000;
 
 // ═══════════════ LED ═══════════════
 #define STATUS_LED_PIN 2
 
 // ═══════════════ Timing & Sleep ═══════════════
-const unsigned long DEFAULT_INTERVAL_SEC = 600; // 10 min fallback
+const unsigned long DEFAULT_INTERVAL_SEC = 300; // 10 min fallback
 uint32_t reportIntervalSec = DEFAULT_INTERVAL_SEC;
 
 // ───────────── Generate sensor ID from MAC ─────────────
@@ -68,17 +68,25 @@ void fetchConfiguration() {
   int code = http.GET();
   if (code == 200) {
     String payload = http.getString();
-    int idx = payload.indexOf("\"reportInterval\":");
-    if (idx != -1) {
-      String sub = payload.substring(idx + 17);
-      int endIdx = sub.indexOf(",");
-      if (endIdx == -1) endIdx = sub.indexOf("}");
-      if (endIdx != -1) {
-        reportIntervalSec = sub.substring(0, endIdx).toInt();
-        if (reportIntervalSec < 10) reportIntervalSec = 10;
-        Serial.printf("[Config] New interval: %d sec\n", reportIntervalSec);
+    
+    // Simple manual parsing to avoid large ArduinoJson dependency if possible, 
+    // but these sensors usually have it. Let's use basic string search for speed.
+    auto getInt = [&](String key, int& val) {
+      int idx = payload.indexOf("\"" + key + "\":");
+      if (idx != -1) {
+        String sub = payload.substring(idx + key.length() + 3);
+        int endIdx = sub.indexOf(",");
+        if (endIdx == -1) endIdx = sub.indexOf("}");
+        if (endIdx != -1) val = sub.substring(0, endIdx).toInt();
       }
-    }
+    };
+
+    getInt("reportInterval", (int&)reportIntervalSec);
+    getInt("soilDryRawValue", dryValue);
+    getInt("soilWetRawValue", wetValue);
+
+    if (reportIntervalSec < 10) reportIntervalSec = 10;
+    Serial.printf("[Config] Interval: %d, Dry: %d, Wet: %d\n", reportIntervalSec, dryValue, wetValue);
   } else {
     Serial.printf("[Config] Failed to fetch (Code: %d)\n", code);
   }
@@ -100,7 +108,7 @@ float readSoilMoisture() {
   digitalWrite(POWER_PIN, LOW);
 
   int avg = total / numReadings;
-  float moisture = map(avg, DRY_VALUE, WET_VALUE, 0, 100);
+  float moisture = map(avg, dryValue, wetValue, 0, 100);
   moisture = constrain(moisture, 0, 100);
 
   Serial.printf("  Raw ADC: %d → Moisture: %.1f%%\n", avg, moisture);
@@ -148,14 +156,22 @@ void setup() {
   Serial.print("Sensor ID: ");
   Serial.println(sensorId);
 
-  // Connect Wi-Fi
-  WiFi.begin(ssid, password);
+  // Connect Wi-Fi with aggressive retry
   Serial.print("Connecting to WiFi");
+  WiFi.begin(ssid, password);
+  
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) { // Increased attempts
     delay(500);
     Serial.print(".");
     attempts++;
+    
+    // Force reset every 10 attempts if stuck
+    if (attempts % 10 == 0) {
+      Serial.print(" (Retrying...) ");
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
+    }
   }
   
   if (WiFi.status() == WL_CONNECTED) {

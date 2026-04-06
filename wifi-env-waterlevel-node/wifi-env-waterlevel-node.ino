@@ -136,14 +136,22 @@ void setup() {
   Serial.print("Sensor ID: ");
   Serial.println(sensorId);
 
-  // Connect Wi-Fi
-  WiFi.begin(ssid, password);
+  // Connect Wi-Fi with aggressive retry
   Serial.print("Connecting to WiFi");
+  WiFi.begin(ssid, password);
+  
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) { // Increased attempts
     delay(500);
     Serial.print(".");
     attempts++;
+    
+    // Force reset every 10 attempts if stuck
+    if (attempts % 10 == 0) {
+      Serial.print(" (Retrying...) ");
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
+    }
   }
   
   if (WiFi.status() == WL_CONNECTED) {
