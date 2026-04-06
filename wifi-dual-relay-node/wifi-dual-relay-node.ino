@@ -233,6 +233,7 @@ void loop() {
 
 
   // Safety Watchdog
+  now = millis(); 
   if (irrigationState && (now - irrigationOnSince >= AUTO_OFF_TIMEOUT)) {
     Serial.println("🚨 WATCHDOG: Irrigation > 30min. Auto-stopping.");
     setIrrigation(false);
