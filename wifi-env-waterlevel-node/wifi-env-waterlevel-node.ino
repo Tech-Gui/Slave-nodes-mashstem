@@ -49,6 +49,9 @@ const int maxDistance = 400;
 const unsigned long DEFAULT_INTERVAL_SEC = 600; // 10 min fallback
 uint32_t reportIntervalSec = DEFAULT_INTERVAL_SEC;
 float distOffsetCm = 0.0;
+float calibEmptyReading = 0.0; // Raw cm when tank empty
+float calibFullReading = 0.0;  // Raw cm when tank full
+float tankHeightCm = 100.0;    // From config
 
 
 // ───────────── Fetch Configuration (Interval) ─────────────
@@ -86,9 +89,35 @@ void fetchConfiguration() {
       if (endIdx == -1) endIdx = sub.indexOf("}");
       if (endIdx != -1) {
         distOffsetCm = sub.substring(0, endIdx).toFloat();
-        Serial.printf("[Config] New offset: %.1f cm\n", distOffsetCm);
       }
     }
+
+    // Parse linear calibration values
+    int emptyIdx = payload.indexOf("\"calibEmptyReading\":");
+    if (emptyIdx != -1) {
+      String sub = payload.substring(emptyIdx + 20);
+      int endIdx = sub.indexOf(",");
+      if (endIdx == -1) endIdx = sub.indexOf("}");
+      if (endIdx != -1) calibEmptyReading = sub.substring(0, endIdx).toFloat();
+    }
+    int fullIdx = payload.indexOf("\"calibFullReading\":");
+    if (fullIdx != -1) {
+      String sub = payload.substring(fullIdx + 19);
+      int endIdx = sub.indexOf(",");
+      if (endIdx == -1) endIdx = sub.indexOf("}");
+      if (endIdx != -1) calibFullReading = sub.substring(0, endIdx).toFloat();
+    }
+    int thIdx = payload.indexOf("\"tankHeightCm\":");
+    if (thIdx != -1) {
+      String sub = payload.substring(thIdx + 15);
+      int endIdx = sub.indexOf(",");
+      if (endIdx == -1) endIdx = sub.indexOf("}");
+      if (endIdx != -1) tankHeightCm = sub.substring(0, endIdx).toFloat();
+    }
+
+    bool hasLinearCalib = (calibEmptyReading > 0 && calibEmptyReading != calibFullReading);
+    Serial.printf("[Config] Offset: %.1f, Calib: %s (empty=%.1f, full=%.1f, height=%.1f)\n",
+      distOffsetCm, hasLinearCalib ? "LINEAR" : "OFFSET", calibEmptyReading, calibFullReading, tankHeightCm);
 
   } else {
     Serial.printf("[Config] Failed to fetch (Code: %d)\n", code);
@@ -196,6 +225,8 @@ String getMacSensorId() {
 
 
 float readDistance() {
+  bool hasLinearCalib = (calibEmptyReading > 0 && calibEmptyReading != calibFullReading);
+  
   for (int i = 0; i < 3; i++) {
     digitalWrite(TRIG_PIN, LOW);
     delayMicroseconds(2);
@@ -205,12 +236,19 @@ float readDistance() {
 
     long duration = pulseIn(ECHO_PIN, HIGH, 30000); // 30ms timeout
     if (duration > 0) {
-      float distanceCm = duration * 0.0343 / 2.0;
-      distanceCm += distOffsetCm; // Apply user-defined offset
+      float rawCm = duration * 0.0343 / 2.0;
+      float distanceCm;
+      
+      if (hasLinearCalib) {
+        // Two-point linear remap: maps raw range [fullReading..emptyReading] → [0..tankHeight]
+        distanceCm = (rawCm - calibFullReading) * (tankHeightCm / (calibEmptyReading - calibFullReading));
+      } else {
+        // Fallback: simple offset
+        distanceCm = rawCm + distOffsetCm;
+      }
 
-      if (distanceCm > 2.0 && distanceCm <= maxDistance) {
-
-        Serial.printf("[Ultrasonic] Attempt %d: Success! Distance: %.1f cm\n", i + 1, distanceCm);
+      if (distanceCm > 0.0 && distanceCm <= maxDistance) {
+        Serial.printf("[Ultrasonic] Attempt %d: raw=%.1f → calibrated=%.1f cm\n", i + 1, rawCm, distanceCm);
         return distanceCm;
       }
     }
