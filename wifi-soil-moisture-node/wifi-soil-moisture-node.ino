@@ -63,6 +63,7 @@ void fetchConfiguration() {
   HTTPClient http;
   String url = String(backendBase) + "/sensors/" + sensorId + "/config";
   http.begin(url);
+  http.setTimeout(15000); // 15s timeout for CERN network
   http.addHeader("x-api-key", apiKey);
 
   int code = http.GET();
@@ -97,13 +98,13 @@ void fetchConfiguration() {
 
 float readSoilMoisture() {
   digitalWrite(POWER_PIN, HIGH);
-  delay(100);
+  delay(500); // Increased from 100ms for more stabilization
 
   int total = 0;
-  const int numReadings = 5;
+  const int numReadings = 10; // Increased from 5
   for (int i = 0; i < numReadings; i++) {
     total += analogRead(SOIL_SENSOR_PIN);
-    delay(10);
+    delay(20); // More spacing between samples
   }
   digitalWrite(POWER_PIN, LOW);
 
@@ -121,6 +122,7 @@ void sendReading(const char* endpoint, float value) {
   HTTPClient http;
   String url = String(backendBase) + endpoint;
   http.begin(url);
+  http.setTimeout(15000); // 15s timeout for CERN network
   http.addHeader("Content-Type", "application/json");
   http.addHeader("x-api-key", apiKey);
 
