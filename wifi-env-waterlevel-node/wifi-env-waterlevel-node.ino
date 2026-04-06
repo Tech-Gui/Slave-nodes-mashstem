@@ -48,6 +48,8 @@ const int maxDistance = 400;
 // ═══════════════ Timing & Sleep ═══════════════
 const unsigned long DEFAULT_INTERVAL_SEC = 600; // 10 min fallback
 uint32_t reportIntervalSec = DEFAULT_INTERVAL_SEC;
+float distOffsetCm = 0.0;
+
 
 // ───────────── Fetch Configuration (Interval) ─────────────
 
@@ -75,6 +77,19 @@ void fetchConfiguration() {
         Serial.printf("[Config] New interval: %d sec\n", reportIntervalSec);
       }
     }
+
+    // Parse distOffsetCm
+    int offsetIdx = payload.indexOf("\"distOffsetCm\":");
+    if (offsetIdx != -1) {
+      String sub = payload.substring(offsetIdx + 15);
+      int endIdx = sub.indexOf(",");
+      if (endIdx == -1) endIdx = sub.indexOf("}");
+      if (endIdx != -1) {
+        distOffsetCm = sub.substring(0, endIdx).toFloat();
+        Serial.printf("[Config] New offset: %.1f cm\n", distOffsetCm);
+      }
+    }
+
   } else {
     Serial.printf("[Config] Failed to fetch (Code: %d)\n", code);
   }
@@ -173,19 +188,30 @@ String getMacSensorId() {
 
 
 float readDistance() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
 
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000); // 30ms timeout
-  if (duration == 0) return -1;
-  
-  float distanceCm = duration * 0.034 / 2;
-  if (distanceCm > maxDistance) return -1;
-  return distanceCm;
+    long duration = pulseIn(ECHO_PIN, HIGH, 30000); // 30ms timeout
+    if (duration > 0) {
+      float distanceCm = duration * 0.0343 / 2.0;
+      distanceCm += distOffsetCm; // Apply user-defined offset
+
+      if (distanceCm > 2.0 && distanceCm <= maxDistance) {
+
+        Serial.printf("[Ultrasonic] Attempt %d: Success! Distance: %.1f cm\n", i + 1, distanceCm);
+        return distanceCm;
+      }
+    }
+    Serial.printf("[Ultrasonic] Attempt %d: Failed (Duration: %ld). Retrying...\n", i + 1, duration);
+    delay(50);
+  }
+  return -1;
 }
+
 
 void loop() {
   // Never reached in Deep Sleep mode

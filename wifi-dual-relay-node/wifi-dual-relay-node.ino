@@ -10,7 +10,7 @@
  *   - x-api-key header sent with every request for multi-tenancy
  *
  * Operation:
- *   - Polls GET  /api/relay/pending?relay_id=ESP32_XXXXXXXXXXXX every 5s
+ *   - Polls GET  /api/relay/pending?relay_id=ESP32_XXXXXXXXXXXX every 5s (Static)
  *   - Reports POST /api/relay/status after each poll
  *   - 30-minute safety auto-off watchdog per channel
  *
@@ -45,7 +45,7 @@ bool irrigationState = false;
 bool waterTankState  = false;
 
 // ═══════════════ Timing ═══════════════
-uint32_t pollIntervalMs = 5000; // Default 5s
+uint32_t pollIntervalMs = 5000; // Static 5s for dual relay (Sync with backend config disabled)
 const unsigned long AUTO_OFF_TIMEOUT = 30 * 60 * 1000UL; // 30 min
 unsigned long lastPollTime = 0;
 unsigned long irrigationOnSince = 0;
@@ -205,7 +205,7 @@ void setup() {
   Serial.print("Relay ID: ");
   Serial.println(relayId);
 
-  fetchConfiguration();
+  // fetchConfiguration(); // Disabled: Static 5s interval required for dual relay
   reportStatus();
 
   Serial.println("Polling backend for relay commands...");
@@ -226,7 +226,7 @@ void loop() {
 
   if (now - lastPollTime >= pollIntervalMs) {
     lastPollTime = now;
-    fetchConfiguration(); // Periodic config sync
+    // fetchConfiguration(); // Disabled: Static 5s interval required for dual relay
     pollCommands();
     reportStatus();
   }
