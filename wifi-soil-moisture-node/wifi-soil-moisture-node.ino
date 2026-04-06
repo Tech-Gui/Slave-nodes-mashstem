@@ -108,11 +108,9 @@ float readSoilMoisture() {
   digitalWrite(POWER_PIN, LOW);
 
   int avg = total / numReadings;
-  float moisture = map(avg, dryValue, wetValue, 0, 100);
-  moisture = constrain(moisture, 0, 100);
-
-  Serial.printf("  Raw ADC: %d → Moisture: %.1f%%\n", avg, moisture);
-  return moisture;
+  // Send raw ADC value — percentage mapping done on frontend
+  Serial.printf("  Raw ADC: %d (sending raw)\n", avg);
+  return (float)avg;
 }
 
 // ───────────── HTTP POST with API Key ─────────────
