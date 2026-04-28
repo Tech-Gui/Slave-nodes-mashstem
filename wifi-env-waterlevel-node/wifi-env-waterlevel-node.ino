@@ -31,7 +31,7 @@ const char* ssid     = "mashnetwork";
 const char* password = "mash2026";
 
 // ═══════════════ Backend Configuration ═══════════════
-const char* backendBase = "http://wifi-nodes-backend-rfq.app.cern.ch/api";
+const char* backendBase = "http://wifi-nodes-backend-testproj.app.cern.ch/api";
 const char* apiKey      = "mash_908b7eb9a7c8e2d7200dcb4f7e3e9f96d2bc1a4a59538aab"; // From /api/auth/register
 
 // ═══════════════ Sensor ID (auto from MAC) ═══════════════
