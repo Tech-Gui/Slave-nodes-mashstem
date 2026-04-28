@@ -19,6 +19,11 @@
 #include <HTTPClient.h>
 #include <DHT.h>
 #include "esp_mac.h"
+#include "../ota_updater.h"
+
+// ═══════════════ Firmware Identity ═══════════════
+#define FIRMWARE_VERSION "1.0.0"
+#define NODE_TYPE "env_waterlevel"
 
 
 // ═══════════════ Wi-Fi Configuration ═══════════════
@@ -34,13 +39,13 @@ String sensorId;
 
 // ═══════════════ DHT Sensor ═══════════════
 #define DHT_PIN   4
-#define DHT_TYPE  DHT11
+#define DHT_TYPE  DHT22
 DHT dht(DHT_PIN, DHT_TYPE);
 
 // ═══════════════ HC-SR04 Ultrasonic ═══════════════
 #define TRIG_PIN  18
-#define ECHO_PIN  19
-const int maxDistance = 400;
+#define ECHO_PIN  19 //yellow
+const int maxDistance = 500;
 
 // ═══════════════ LED ═══════════════
 #define STATUS_LED_PIN 2
@@ -52,6 +57,11 @@ float distOffsetCm = 0.0;
 float calibFullReading = 0.0;   // Raw cm when tank is full (water at top)
 float calibScaleFactor = 1.0;   // Pre-computed scale: expectedDist / rawRange
 float tankHeightCm = 100.0;
+
+// ═══════════════ OTA Settings ═══════════════
+bool otaEnabled = true;
+uint32_t otaCheckIntervalSec = 3600; // Default 1 hour
+RTC_DATA_ATTR uint32_t otaCheckCounter = 0; // Persists across deep sleep
 
 
 // ───────────── Fetch Configuration (Interval) ─────────────
@@ -119,6 +129,25 @@ void fetchConfiguration() {
     Serial.printf("[Config] Calib: %s (fullRef=%.1f, scale=%.3f, height=%.1f)\n",
       hasCalib ? "ACTIVE" : "OFF", calibFullReading, calibScaleFactor, tankHeightCm);
 
+    // Parse OTA settings (merged by backend: type policy + per-node override)
+    int otaIdx = payload.indexOf("\"otaEnabled\":");
+    if (otaIdx != -1) {
+      String sub = payload.substring(otaIdx + 13);
+      otaEnabled = sub.startsWith("true");
+    }
+    int otaIntIdx = payload.indexOf("\"otaCheckInterval\":");
+    if (otaIntIdx != -1) {
+      String sub = payload.substring(otaIntIdx + 19);
+      int endIdx = sub.indexOf(",");
+      if (endIdx == -1) endIdx = sub.indexOf("}");
+      if (endIdx != -1) {
+        otaCheckIntervalSec = sub.substring(0, endIdx).toInt();
+        if (otaCheckIntervalSec < 300) otaCheckIntervalSec = 300;
+      }
+    }
+    Serial.printf("[Config] OTA: enabled=%s, interval=%ds, counter=%ds\n",
+      otaEnabled ? "YES" : "NO", otaCheckIntervalSec, otaCheckCounter);
+
   } else {
     Serial.printf("[Config] Failed to fetch (Code: %d)\n", code);
   }
@@ -157,6 +186,10 @@ void setup() {
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   digitalWrite(STATUS_LED_PIN, LOW);
+  
+  // Start DHT warm-up early (needs ~2s)
+  dht.begin();
+  
   WiFi.mode(WIFI_STA); // Ensure radio is ready for MAC reading
 
   // Generate MAC-based sensor ID
@@ -164,6 +197,7 @@ void setup() {
   sensorId = getMacSensorId();
   Serial.print("Sensor ID: ");
   Serial.println(sensorId);
+  Serial.printf("Firmware: v%s\n", FIRMWARE_VERSION);
 
   // Connect Wi-Fi with aggressive retry
   Serial.print("Connecting to WiFi");
@@ -190,17 +224,51 @@ void setup() {
     // 1. Fetch Config first
     fetchConfiguration();
 
-    // 2. Read and Send Data
-    dht.begin();
-    delay(2000); // Wait for DHT stable
-    
-    float temp = dht.readTemperature();
-    float hum  = dht.readHumidity();
-    float dist = readDistance();
+    // 2. OTA Check (gated by interval counter)
+    otaCheckCounter += reportIntervalSec;
+    if (otaEnabled && otaCheckCounter >= otaCheckIntervalSec) {
+      otaCheckCounter = 0;
+      Serial.printf("[OTA] Check due (interval: %ds)\n", otaCheckIntervalSec);
+      OTAInfo otaInfo = checkForUpdate(NODE_TYPE, FIRMWARE_VERSION);
+      if (otaInfo.available) {
+        sendOtaAck(backendBase, apiKey, sensorId.c_str(), otaInfo.version.c_str(), false, "starting");
+        if (performUpdate(otaInfo)) {
+          // Never reached — reboots
+        } else {
+          sendOtaAck(backendBase, apiKey, sensorId.c_str(), otaInfo.version.c_str(), false, "flash_failed");
+        }
+      } else {
+        sendOtaAck(backendBase, apiKey, sensorId.c_str(), FIRMWARE_VERSION, true, "up_to_date");
+      }
+    } else {
+      Serial.printf("[OTA] Skipping check (%d/%d sec)\n", otaCheckCounter, otaCheckIntervalSec);
+    }
 
-    if (!isnan(temp)) sendReading("/temperature", temp);
-    if (!isnan(hum))  sendReading("/humidity", hum);
-    if (dist >= 0)    sendReading("/water-level", dist);
+    // 3. Read and Send Data (with retries for DHT22)
+    float temp = NAN, hum = NAN;
+    bool dhtSuccess = false;
+
+    for (int i = 0; i < 3; i++) {
+        temp = dht.readTemperature();
+        hum  = dht.readHumidity();
+        if (!isnan(temp) && !isnan(hum)) {
+            dhtSuccess = true;
+            Serial.printf("[DHT] Success on attempt %d: %.1f C, %.1f%%\n", i+1, temp, hum);
+            break;
+        }
+        Serial.printf("[DHT] Attempt %d failed (NaN). Retrying in 2s...\n", i+1);
+        delay(2000);
+    }
+
+    if (dhtSuccess) {
+        sendReading("/temperature", temp);
+        sendReading("/humidity", hum);
+    } else {
+        Serial.println("[DHT] Permanent failure after 3 attempts.");
+    }
+
+    float dist = readDistance();
+    if (dist >= 0) sendReading("/water-level", dist);
 
     Serial.println("Data sent. Entering sleep...");
   } else {

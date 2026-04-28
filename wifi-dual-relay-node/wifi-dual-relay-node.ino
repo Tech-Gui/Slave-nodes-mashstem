@@ -21,6 +21,11 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "esp_mac.h"
+#include "../ota_updater.h"
+
+// ═══════════════ Firmware Identity ═══════════════
+#define FIRMWARE_VERSION "1.0.0"
+#define NODE_TYPE "dual_relay"
 
 
 // ═══════════════ Wi-Fi Configuration ═══════════════
@@ -56,6 +61,11 @@ unsigned long irrigationOnSince = 0;
 unsigned long waterTankOnSince  = 0;
 int consecutiveFailures = 0;
 bool lastPollSuccessful = true;
+
+// ═══════════════ OTA Settings (from backend config) ═══════════════
+bool otaEnabled = true;
+uint32_t otaCheckIntervalMs = 3600000; // Default 1 hour
+unsigned long lastOtaCheckTime = 0;
 
 
 // ───────────── Generate relay ID from MAC ─────────────
@@ -163,6 +173,25 @@ void fetchConfiguration() {
         Serial.printf("[Config] New poll interval: %d ms\n", pollIntervalMs);
       }
     }
+
+    // Parse OTA settings (merged by backend: type policy + per-node override)
+    int otaIdx = payload.indexOf("\"otaEnabled\":");
+    if (otaIdx != -1) {
+      String sub = payload.substring(otaIdx + 13);
+      otaEnabled = sub.startsWith("true");
+    }
+    int otaIntIdx = payload.indexOf("\"otaCheckInterval\":");
+    if (otaIntIdx != -1) {
+      String sub = payload.substring(otaIntIdx + 19);
+      int endIdx = sub.indexOf(",");
+      if (endIdx == -1) endIdx = sub.indexOf("}");
+      if (endIdx != -1) {
+        uint32_t intervalSec = sub.substring(0, endIdx).toInt();
+        if (intervalSec < 300) intervalSec = 300; // Floor: 5 minutes
+        otaCheckIntervalMs = intervalSec * 1000UL;
+        Serial.printf("[Config] OTA check interval: %d sec, enabled: %s\n", intervalSec, otaEnabled ? "YES" : "NO");
+      }
+    }
   }
   http.end();
 }
@@ -219,9 +248,27 @@ void setup() {
   relayId = getMacRelayId();
   Serial.print("Relay ID: ");
   Serial.println(relayId);
+  Serial.printf("Firmware: v%s\n", FIRMWARE_VERSION);
 
-  // fetchConfiguration(); // Disabled: Static 5s interval required for dual relay
+  // Fetch config (includes OTA settings)
+  fetchConfiguration();
   reportStatus();
+
+  // Check for OTA on boot
+  if (otaEnabled) {
+    OTAInfo otaInfo = checkForUpdate(NODE_TYPE, FIRMWARE_VERSION);
+    if (otaInfo.available) {
+      sendOtaAck(backendBase, apiKey, relayId.c_str(), otaInfo.version.c_str(), false, "starting");
+      if (performUpdate(otaInfo)) {
+        // Never reaches here — device reboots
+      } else {
+        sendOtaAck(backendBase, apiKey, relayId.c_str(), otaInfo.version.c_str(), false, "flash_failed");
+      }
+    } else {
+      sendOtaAck(backendBase, apiKey, relayId.c_str(), FIRMWARE_VERSION, true, "up_to_date");
+    }
+    lastOtaCheckTime = millis();
+  }
 
   Serial.println("Polling backend for relay commands...");
 }
@@ -276,4 +323,22 @@ void loop() {
   }
 
   delay(100);
+
+  // ═══════════════ Periodic OTA Check ═══════════════
+  now = millis();
+  if (otaEnabled && (now - lastOtaCheckTime >= otaCheckIntervalMs)) {
+    lastOtaCheckTime = now;
+    Serial.println("[OTA] Periodic check...");
+    OTAInfo otaInfo = checkForUpdate(NODE_TYPE, FIRMWARE_VERSION);
+    if (otaInfo.available) {
+      sendOtaAck(backendBase, apiKey, relayId.c_str(), otaInfo.version.c_str(), false, "starting");
+      if (performUpdate(otaInfo)) {
+        // Never reached — reboots
+      } else {
+        sendOtaAck(backendBase, apiKey, relayId.c_str(), otaInfo.version.c_str(), false, "flash_failed");
+      }
+    } else {
+      sendOtaAck(backendBase, apiKey, relayId.c_str(), FIRMWARE_VERSION, true, "up_to_date");
+    }
+  }
 }

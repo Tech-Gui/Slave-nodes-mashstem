@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../.."
+		},
+		{
+			"path": "../../../wifi-nodes-backend"
 		}
 	],
 	"settings": {

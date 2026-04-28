@@ -2,7 +2,7 @@
  * ESP32 Combined Sensor Node (Environmental + Water Level)
  *
  * This device measures:
- * 1. Temperature and Humidity (DHT11 on GPIO 4)
+ * 1. Temperature and Humidity (DHT22 on GPIO 4)
  * 2. Water Level (HC-SR04 on Trig: GPIO 18, Echo: GPIO 19)
  *
  * Reporting interval is customizable via BLE (default 1 min).
@@ -18,7 +18,7 @@
 
 // Hardware Configuration
 #define DHT_PIN 4
-#define DHT_TYPE DHT11
+#define DHT_TYPE DHT22
 #define TRIG_PIN 18
 #define ECHO_PIN 19
 #define STATUS_LED_PIN 2
@@ -106,7 +106,7 @@ void updateInterval(uint32_t intervalSec) {
 }
 
 bool readSensors() {
-    // 1. Read DHT11
+    // 1. Read DHT22
     float t = dht.readTemperature();
     float h = dht.readHumidity();
     if (isnan(t) || isnan(h)) {

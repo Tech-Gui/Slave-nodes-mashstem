@@ -1,0 +1,22 @@
+{
+  "ota": {
+    "soil_moisture": {
+      "version": "1.0.0",
+      "url": "https://github.com/Tech-Gui/Slave-nodes-mashstem/releases/download/v1.0.0/soil_moisture.bin",
+      "size": 0,
+      "md5": ""
+    },
+    "env_waterlevel": {
+      "version": "1.0.0",
+      "url": "https://github.com/Tech-Gui/Slave-nodes-mashstem/releases/download/v1.0.0/env_waterlevel.bin",
+      "size": 0,
+      "md5": ""
+    },
+    "dual_relay": {
+      "version": "1.0.0",
+      "url": "https://github.com/Tech-Gui/Slave-nodes-mashstem/releases/download/v1.0.0/dual_relay.bin",
+      "size": 0,
+      "md5": ""
+    }
+  }
+}

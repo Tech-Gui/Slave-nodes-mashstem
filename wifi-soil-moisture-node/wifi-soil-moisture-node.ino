@@ -16,6 +16,11 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include "esp_mac.h"
+#include "../ota_updater.h"
+
+// ═══════════════ Firmware Identity ═══════════════
+#define FIRMWARE_VERSION "1.0.0"
+#define NODE_TYPE "soil_moisture"
 
 
 // ═══════════════ Wi-Fi Configuration ═══════════════
@@ -42,6 +47,11 @@ int wetValue = 2000;
 // ═══════════════ Timing & Sleep ═══════════════
 const unsigned long DEFAULT_INTERVAL_SEC = 300; // 10 min fallback
 uint32_t reportIntervalSec = DEFAULT_INTERVAL_SEC;
+
+// ═══════════════ OTA Settings ═══════════════
+bool otaEnabled = true;
+uint32_t otaCheckIntervalSec = 3600; // Default 1 hour
+RTC_DATA_ATTR uint32_t otaCheckCounter = 0; // Persists across deep sleep
 
 // ───────────── Generate sensor ID from MAC ─────────────
 
@@ -88,6 +98,25 @@ void fetchConfiguration() {
 
     if (reportIntervalSec < 10) reportIntervalSec = 10;
     Serial.printf("[Config] Interval: %d, Dry: %d, Wet: %d\n", reportIntervalSec, dryValue, wetValue);
+
+    // Parse OTA settings (merged by backend: type policy + per-node override)
+    int otaIdx = payload.indexOf("\"otaEnabled\":");
+    if (otaIdx != -1) {
+      String sub = payload.substring(otaIdx + 13);
+      otaEnabled = sub.startsWith("true");
+    }
+    int otaIntIdx = payload.indexOf("\"otaCheckInterval\":");
+    if (otaIntIdx != -1) {
+      String sub = payload.substring(otaIntIdx + 19);
+      int endIdx = sub.indexOf(",");
+      if (endIdx == -1) endIdx = sub.indexOf("}");
+      if (endIdx != -1) {
+        otaCheckIntervalSec = sub.substring(0, endIdx).toInt();
+        if (otaCheckIntervalSec < 300) otaCheckIntervalSec = 300;
+      }
+    }
+    Serial.printf("[Config] OTA: enabled=%s, interval=%ds, counter=%ds\n",
+      otaEnabled ? "YES" : "NO", otaCheckIntervalSec, otaCheckCounter);
   } else {
     Serial.printf("[Config] Failed to fetch (Code: %d)\n", code);
   }
@@ -155,6 +184,7 @@ void setup() {
   sensorId = getMacSensorId();
   Serial.print("Sensor ID: ");
   Serial.println(sensorId);
+  Serial.printf("Firmware: v%s\n", FIRMWARE_VERSION);
 
   // Connect Wi-Fi with aggressive retry
   Serial.print("Connecting to WiFi");
@@ -181,7 +211,27 @@ void setup() {
     // 1. Fetch Config first
     fetchConfiguration();
 
-    // 2. Read and Send Data
+    // 2. OTA Check (gated by interval counter)
+    otaCheckCounter += reportIntervalSec;
+    if (otaEnabled && otaCheckCounter >= otaCheckIntervalSec) {
+      otaCheckCounter = 0;
+      Serial.printf("[OTA] Check due (interval: %ds)\n", otaCheckIntervalSec);
+      OTAInfo otaInfo = checkForUpdate(NODE_TYPE, FIRMWARE_VERSION);
+      if (otaInfo.available) {
+        sendOtaAck(backendBase, apiKey, sensorId.c_str(), otaInfo.version.c_str(), false, "starting");
+        if (performUpdate(otaInfo)) {
+          // Never reached — reboots
+        } else {
+          sendOtaAck(backendBase, apiKey, sensorId.c_str(), otaInfo.version.c_str(), false, "flash_failed");
+        }
+      } else {
+        sendOtaAck(backendBase, apiKey, sensorId.c_str(), FIRMWARE_VERSION, true, "up_to_date");
+      }
+    } else {
+      Serial.printf("[OTA] Skipping check (%d/%d sec)\n", otaCheckCounter, otaCheckIntervalSec);
+    }
+
+    // 3. Read and Send Data
     float moisture = readSoilMoisture();
     sendReading("/soil-moisture", moisture);
 
