@@ -7,10 +7,10 @@
       "md5": ""
     },
     "env_waterlevel": {
-      "version": "1.0.0",
-      "url": "https://github.com/Tech-Gui/Slave-nodes-mashstem/releases/download/v1.0.0/env_waterlevel.bin",
-      "size": 0,
-      "md5": ""
+      "version": "1.0.1",
+      "url": "https://github.com/Tech-Gui/wifi-nodes-backend/releases/download/1.0.1/wifi-env-waterlevel-node.ino.bin",
+      "size": 1080000,
+      "md5": "78be116b8c70864ea5e422c33a71cfe0"
     },
     "dual_relay": {
       "version": "1.0.0",
