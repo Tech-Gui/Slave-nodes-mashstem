@@ -7,7 +7,7 @@
       "md5": ""
     },
     "env_waterlevel": {
-      "version": "1.0.1",
+      "version": "1.0.0",
       "url": "https://github.com/Tech-Gui/wifi-nodes-backend/releases/download/1.0.1/wifi-env-waterlevel-node.ino.bin",
       "size": 1080000,
       "md5": "78be116b8c70864ea5e422c33a71cfe0"
