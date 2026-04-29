@@ -4,15 +4,6 @@
 			"path": "."
 		},
 		{
-			"path": "../../lte_ble_gateway"
-		},
-		{
-			"path": "../op-pa"
-		},
-		{
-			"path": "../../Downloads/nrf91_A02YYUW"
-		},
-		{
 			"path": "../frontend"
 		},
 		{

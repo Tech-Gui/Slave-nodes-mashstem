@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mashstem Industrial Sticker Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f1115;
+            --card-bg: #1a1d23;
+            --accent: #f0f0f0;
+            --metallic: linear-gradient(145deg, #e0e0e0, #c0c0c0);
+            --text-dark: #121212;
+            --text-light: #f0f0f0;
+            --border-radius: 8px;
+            
+            /* Colorful Palettes */
+            --blue-grad: linear-gradient(135deg, #0052d4, #4364f7, #6fb1fc);
+            --teal-grad: linear-gradient(135deg, #00b09b, #96c93d);
+            --green-grad: linear-gradient(135deg, #11998e, #38ef7d);
+            --dark-glass: rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-light);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            max-width: 800px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #fff, #888);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        header p {
+            color: #888;
+            font-size: 1.1rem;
+        }
+
+        .sticker-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 40px;
+            width: 100%;
+            max-width: 1100px;
+        }
+
+        /* --- Sticker Styles --- */
+        .sticker {
+            background: var(--metallic);
+            width: 320px;
+            height: 320px;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 10px rgba(255,255,255,0.5);
+            color: var(--text-dark);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #999;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+        }
+
+        .sticker:hover {
+            transform: translateY(-10px) scale(1.02);
+        }
+
+        .sticker::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.4) 0%, transparent 50%, rgba(0,0,0,0.1) 100%);
+            pointer-events: none;
+        }
+
+        .sticker-header {
+            border-bottom: 2px solid var(--text-dark);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .brand {
+            font-weight: 800;
+            font-size: 1.4rem;
+            letter-spacing: -0.01em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .model {
+            font-size: 0.9rem;
+            font-weight: 600;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .sticker-body {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .icons {
+            display: flex;
+            justify-content: space-around;
+            padding: 10px 0;
+        }
+
+        .icon-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .icon-item svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        .specs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .spec-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .spec-label {
+            font-size: 0.6rem;
+            opacity: 0.6;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .spec-value {
+            font-weight: 600;
+        }
+
+        .sticker-footer {
+            margin-top: auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            padding-top: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .qr-placeholder {
+            width: 50px;
+            height: 50px;
+            background: #000;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 0.5rem;
+            padding: 5px;
+            text-align: center;
+        }
+
+        .origin {
+            text-align: right;
+        }
+
+        /* --- Colorful Top Stickers --- */
+        .top-sticker-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 40px;
+            width: 100%;
+            max-width: 1100px;
+            margin-top: 60px;
+            padding-top: 60px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .top-sticker {
+            width: 280px;
+            height: 280px;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 15px 45px rgba(0,0,0,0.4);
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            color: white;
+            text-align: center;
+            overflow: hidden;
+            border: 4px solid rgba(255,255,255,0.1);
+        }
+
+        .top-sticker:hover {
+            transform: scale(1.05) rotate(5deg);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+        }
+
+        .top-sticker::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.2) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .top-sticker.command { background: var(--blue-grad); }
+        .top-sticker.aqua { background: var(--teal-grad); }
+        .top-sticker.terra { background: var(--green-grad); }
+
+        .top-sticker .logo-area {
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .top-sticker .mash {
+            font-size: 1.8rem;
+            font-weight: 900;
+            letter-spacing: 0.1em;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .top-sticker .sub {
+            font-size: 0.8rem;
+            font-weight: 700;
+            background: var(--dark-glass);
+            padding: 4px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            backdrop-filter: blur(5px);
+        }
+
+        .pattern-bg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            opacity: 0.15;
+            z-index: 1;
+        }
+
+        /* --- Print Mode --- */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .sticker-container {
+                display: block;
+            }
+            .sticker {
+                margin: 20px auto;
+                box-shadow: none;
+                break-inside: avoid;
+                border: 1px solid #000;
+            }
+            header, .controls {
+                display: none;
+            }
+        }
+
+        .controls {
+            margin-top: 40px;
+            display: flex;
+            gap: 20px;
+        }
+
+        .btn {
+            background: var(--card-bg);
+            color: white;
+            border: 1px solid #444;
+            padding: 12px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn:hover {
+            background: #2a2e35;
+            border-color: #666;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: #fff;
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            background: #ddd;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Mashstem Industrial</h1>
+        <p>Precision Engineering & IoT Solutions. Generation 2 Node Stickers.</p>
+    </header>
+
+    <div class="sticker-container">
+        <!-- Sticker 1: Dual Relay -->
+        <div class="sticker" id="relay-node">
+            <div class="sticker-header">
+                <div class="brand">MASHSTEM</div>
+                <div class="model">M-Series: Command-2 Relay</div>
+            </div>
+            <div class="sticker-body">
+                <div class="icons">
+                    <div class="icon-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+                        WiFi
+                    </div>
+                    <div class="icon-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                        Power
+                    </div>
+                    <div class="icon-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="7" y1="7" x2="7" y2="17"/><line x1="17" y1="7" x2="17" y2="17"/></svg>
+                        Relay
+                    </div>
+                </div>
+                <div class="specs">
+                    <div class="spec-item"><span class="spec-label">TYPE</span><span class="spec-value">DUAL CHANNEL</span></div>
+                    <div class="spec-item"><span class="spec-label">INPUT</span><span class="spec-value">5V DC 2.5A</span></div>
+                    <div class="spec-item"><span class="spec-label">WIFI</span><span class="spec-value">2.4GHZ 802.11 B/G/N</span></div>
+                    <div class="spec-item"><span class="spec-label">RATING</span><span class="spec-value">IP65 WEATHERPROOF</span></div>
+                    <div class="spec-item"><span class="spec-label">FIRMWARE</span><span class="spec-value">V1.0.0 M-CORE</span></div>
+                    <div class="spec-item"><span class="spec-label">DATE</span><span class="spec-value">APR.2026</span></div>
+                </div>
+            </div>
+            <div class="sticker-footer">
+                <div class="qr-placeholder">SETUP QR</div>
+                <div class="origin">ENGINEERED BY<br>MASHSTEM TECH</div>
+            </div>
+        </div>
+
+        <!-- Sticker 2: Env Waterlevel -->
+        <div class="sticker" id="env-node">
+            <div class="sticker-header">
+                <div class="brand">MASHSTEM</div>
+                <div class="model">M-Series: Hydro-Pulse Pro</div>
+            </div>
+            <div class="sticker-body">
+                <div class="icons">
+                    <div class="icon-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                        Level
+                    </div>
+                    <div class="icon-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+                        Temp
+                    </div>
+                    <div class="icon-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5s-3 3.5-3 5.5a7 7 0 0 0 7 7z"/></svg>
+                        Hum
+                    </div>
+                </div>
+                <div class="specs">
+                    <div class="spec-item"><span class="spec-label">SENSORS</span><span class="spec-value">ULTRA / DHT22</span></div>
+                    <div class="spec-item"><span class="spec-label">INPUT</span><span class="spec-value">5V DC (USB/EXT)</span></div>
+                    <div class="spec-item"><span class="spec-label">RANGE</span><span class="spec-value">0.1 - 4.5M</span></div>
+                    <div class="spec-item"><span class="spec-label">RATING</span><span class="spec-value">IP65 ENCLOSURE</span></div>
+                    <div class="spec-item"><span class="spec-label">NODE ID</span><span class="spec-value">ESP32_HW_ENV</span></div>
+                    <div class="spec-item"><span class="spec-label">MODE</span><span class="spec-value">LOW POWER SLEEP</span></div>
+                </div>
+            </div>
+            <div class="sticker-footer">
+                <div class="qr-placeholder">SETUP QR</div>
+                <div class="origin">ENGINEERED BY<br>MASHSTEM TECH</div>
+            </div>
+        </div>
+
+        <!-- Sticker 3: Soil Moisture -->
+        <div class="sticker" id="soil-node">
+            <div class="sticker-header">
+                <div class="brand">MASHSTEM</div>
+                <div class="model">M-Series: Terra-Sense Elite</div>
+            </div>
+            <div class="sticker-body">
+                <div class="icons">
+                    <div class="icon-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                        Earth
+                    </div>
+                    <div class="icon-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
+                        Moist
+                    </div>
+                    <div class="icon-item">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        Deep
+                    </div>
+                </div>
+                <div class="specs">
+                    <div class="spec-item"><span class="spec-label">TYPE</span><span class="spec-value">CAPACITIVE v2.0</span></div>
+                    <div class="spec-item"><span class="spec-label">INPUT</span><span class="spec-value">3.7V - 5V DC</span></div>
+                    <div class="spec-item"><span class="spec-label">LIFE</span><span class="spec-value">6+ MONTHS (BATT)</span></div>
+                    <div class="spec-item"><span class="spec-label">RATING</span><span class="spec-value">IP67 PROBE</span></div>
+                    <div class="spec-item"><span class="spec-label">PROTOCOL</span><span class="spec-value">HTTP / WIFI</span></div>
+                    <div class="spec-item"><span class="spec-label">DATE</span><span class="spec-value">APR.2026</span></div>
+                </div>
+            </div>
+            <div class="sticker-footer">
+                <div class="qr-placeholder">SETUP QR</div>
+                <div class="origin">ENGINEERED BY<br>MASHSTEM TECH</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn btn-primary" onclick="window.print()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 5px;"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print Stickers
+        </button>
+        <button class="btn" onclick="alert('Saving to PDF...')">Download High-Res</button>
+    </div>
+
+    <header style="margin-top: 80px;">
+        <h1>Top Cover Branding</h1>
+        <p>Colorful high-visibility stickers for enclosure lids.</p>
+    </header>
+
+    <div class="top-sticker-container">
+        <!-- Command Blue -->
+        <div class="top-sticker command">
+            <svg class="pattern-bg" viewBox="0 0 100 100">
+                <path d="M0 0 L100 100 M100 0 L0 100" stroke="white" stroke-width="0.5" fill="none" />
+                <circle cx="50" cy="50" r="40" stroke="white" stroke-width="0.5" fill="none" />
+                <rect x="20" y="20" width="60" height="60" stroke="white" stroke-width="0.5" fill="none" />
+            </svg>
+            <div class="logo-area">
+                <div class="mash">MASHSTEM</div>
+                <div class="sub">COMMAND</div>
+            </div>
+        </div>
+
+        <!-- Aqua Teal -->
+        <div class="top-sticker aqua">
+            <svg class="pattern-bg" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="10" stroke="white" stroke-width="0.5" fill="none" />
+                <circle cx="50" cy="50" r="20" stroke="white" stroke-width="0.5" fill="none" />
+                <circle cx="50" cy="50" r="30" stroke="white" stroke-width="0.5" fill="none" />
+                <circle cx="50" cy="50" r="40" stroke="white" stroke-width="0.5" fill="none" />
+            </svg>
+            <div class="logo-area">
+                <div class="mash">MASHSTEM</div>
+                <div class="sub">AQUA</div>
+            </div>
+        </div>
+
+        <!-- Terra Green -->
+        <div class="top-sticker terra">
+            <svg class="pattern-bg" viewBox="0 0 100 100">
+                <path d="M50 10 Q70 30 50 50 Q30 70 50 90" stroke="white" stroke-width="0.5" fill="none" />
+                <path d="M10 50 Q30 30 50 50 Q70 70 90 50" stroke="white" stroke-width="0.5" fill="none" />
+            </svg>
+            <div class="logo-area">
+                <div class="mash">MASHSTEM</div>
+                <div class="sub">TERRA</div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

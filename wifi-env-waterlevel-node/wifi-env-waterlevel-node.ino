@@ -29,6 +29,8 @@
 // ═══════════════ Wi-Fi Configuration ═══════════════
 const char* ssid     = "mashnetwork";
 const char* password = "mash2026";
+//  const char* password ="45289477";
+// const char* ssid     = "TheParks_22-4L";
 
 // ═══════════════ Backend Configuration ═══════════════
 const char* backendBase = "http://wifi-nodes-backend-testproj.app.cern.ch/api";
